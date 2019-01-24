@@ -1,0 +1,95 @@
+#+OPTIONS: num:nil
+* pasinks
+
+A tool for selecting and formatting information about Pulseaudio sinks.
+
+** Background
+While building my latest [[https://i3wm.org/][i3]] desktop environment I found it painful to extract volume levels, particularly when there are multiple sinks. ~pasinks~ helps to extract and format relevant information from pulseaudio.
+
+An initial version was written in Python, however I found it to be rather slow. Having had an itch to try ~golang~ for some time, I was pleasently surprised to find that it had excellent client libraries for both [[https://github.com/godbus/dbus][dbus]] and [[https://github.com/sqp/pulseaudio][pulseaudio]].
+
+** Examples
+
+*** List all outputs
+#+BEGIN_SRC sh :results output code :exports both
+./pasinks
+#+END_SRC
+
+#+RESULTS:
+#+BEGIN_SRC sh
+alsa_output.usb-Generic_USB_Audio_200901010001-00.HiFi__hw_Dock_1__sink: 85%
+alsa_output.usb-Generic_USB_Audio_200901010001-00.HiFi__hw_Dock_0__sink: 80%
+alsa_output.pci-0000_00_1f.3.analog-stereo: 28%
+#+END_SRC
+
+*** With an output format
+
+#+BEGIN_SRC sh :results output :exports both
+./pasinks -format "%Name / %ActivePortDescription: %VolumePercent (%StateString)"
+#+END_SRC
+
+#+RESULTS:
+: alsa_output.usb-Generic_USB_Audio_200901010001-00.HiFi__hw_Dock_1__sink / Line Out: 85% (Suspended)
+: alsa_output.usb-Generic_USB_Audio_200901010001-00.HiFi__hw_Dock_0__sink / Headphone: 80% (Suspended)
+: alsa_output.pci-0000_00_1f.3.analog-stereo / Speakers: 28% (Suspended)
+
+*** Filter by state
+
+#+BEGIN_SRC sh :results output :exports both
+./pasinks -running -format "%VolumePercent"
+#+END_SRC
+
+#+RESULTS:
+: 85%
+
+** Format Strings
+
+Sinks support the following format parameters:
+
+|--------------------------+---------------------------------------------+----------------------------------------------|
+| Format String            | Description                                 | Example                                      |
+|--------------------------+---------------------------------------------+----------------------------------------------|
+| ~%Driver~                | Driver name                                 | ~module-alsa-card.c~                         |
+| ~%Name~                  | Name of the output                          | ~alsa_output.pci-0000_00_1f.3.analog-stereo~ |
+| ~%VolumeRaw~             | Volume percentage                           | ~33~                                         |
+| ~%VolumeString~          | Volume formatted as a percentage            | ~33%~                                        |
+| ~%SampleRate~            | Reported sample rate of sink                | ~44100~                                      |
+| ~%StateRaw~              | Current sink state, as integer              | ~1~                                          |
+| ~%StateString~           | Current sink state, formatted as a string   | ~Running~, ~Idle~, ~Suspended~               |
+| ~%ActivePortName~        | Name of the active port on the sink         | ~analog-output-speaker~                      |
+| ~%ActivePortDescription~ | Description of the sink's active port       | ~Speakers~                                   |
+| ~%Muted~                 | Whether or not the sink is currently muted. | ~true~, ~false~                              |
+|--------------------------+---------------------------------------------+----------------------------------------------|
+
+** i3blocks
+
+I use [[https://github.com/vivien/i3blocks][i3blocks]] to generate my status bar, so my basic config looks like this:
+
+#+BEGIN_SRC 
+[script]
+command=pasinks -running -format "%StateString: %ActivePortDescription (%VolumePercent)"
+label=🔉
+interval=10
+#+END_SRC
+
+This renders a nice little blocklet like so:
+
+#+CAPTION: My daily driver i3blocks setup
+[[./screenshots/i3blocks.png]]
+
+A more advanced setup might wrap this in a shell script to detect when the sink is muted or not running, for example:
+
+#+BEGIN_SRC sh :exports code :results output
+if [[ $(./pasinks -running | wc -l) == "0" ]]; then
+    echo "Idle"
+    exit 0
+fi
+if [[ "$(./pasinks -running -format %Muted)" == "true" ]]; then
+    echo "Muted"
+    exit 0
+fi
+./pasinks -running -format "%StateString: %ActivePortDescription (%VolumePercent)" | head -n 1
+#+END_SRC
+
+#+RESULTS:
+: Idle
